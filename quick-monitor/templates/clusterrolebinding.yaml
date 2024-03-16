@@ -5,7 +5,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: {{ include "quick-monitor.fullname" . }}
-  namespace: quick
+  namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: {{ include "quick-monitor.fullname" . }}
