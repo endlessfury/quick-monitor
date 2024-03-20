@@ -5,6 +5,7 @@
 replicaCount: 1
 
 monitoredNamespace: ""
+cycleSleep: 60
 
 image:
   repository: eriksonek/quick-monitor

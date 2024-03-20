@@ -6,8 +6,7 @@ APISERVER=https://kubernetes.default.svc && SERVICEACCOUNT=/var/run/secrets/kube
 
 while :
 do
-    curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/namespaces/$monitoredNamespace/deployments | jq -r '[(.items[] | { name: .metadata.name, replicas: .status.replicas, availableReplicas: .status.availableReplicas })]' > /root/deployments.json 
-	python3 /root/generatehtml.py
+	python3 /root/script.py
 	cp -f /root/deployments.html /var/www/html/index.html	
-	sleep 30
+	sleep ${CYCLE_SLEEP}
 done
