@@ -40,15 +40,15 @@ spec:
             - name: monitoredNamespace
               value: {{ .Values.monitoredNamespace }}
             - name: CYCLE_SLEEP
-              value: {{ .Values.cycleSleep }}
+              value: {{ .Values.cycleSleep | quote }}
             - name: appVersion
               valueFrom:
-              fieldRef:
-                fieldPath: metadata.labels.app.'kubernetes.io/version'
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/version']
             - name: chartInfo
               valueFrom:
-              fieldRef:
-                fieldPath: metadata.labels.app.'helm.sh/chart'
+                fieldRef:
+                  fieldPath: metadata.labels['helm.sh/chart']
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

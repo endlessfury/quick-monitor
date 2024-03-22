@@ -9,8 +9,6 @@ chartInfo = os.getenv('chartInfo')
 # https://github.com/kubernetes-client/python/blob/master/kubernetes/README.md
 config.load_incluster_config()
 
-config.load_kube_config()
-
 def fetchDeploymentsWithStatus() -> []:
     api_instance = client.AppsV1Api()
     deployments = api_instance.list_namespaced_deployment(monitoredNamespace)
