@@ -16,18 +16,18 @@ def fetchDeploymentsWithStatus() -> []:
     for deployment in deployments.items:
         #print("%s\t%s\t%s" % (deployment.metadata.name, deployment.status.available_replicas, deployment.status.replicas))
         if deployment.status.replicas == 0:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "DISABLED"})
+            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "DISABLED", "image":deployment.spec.template.spec.containers[0].image})
         elif deployment.status.unavailable_replicas == 1 and deployment.status.replicas == 1:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (0/" + str(deployment.status.replicas) +")"})
+            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (0/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
         elif deployment.status.available_replicas:
             if deployment.status.available_replicas < deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.available_replicas) + "/" + str(deployment.status.replicas) +")"})
+                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.available_replicas) + "/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
             elif deployment.status.available_replicas == deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK"})
+                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK", "image":deployment.spec.template.spec.containers[0].image})
         elif deployment.status.unavailable_replicas:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.replicas - deployment.status.unavailable_replicas) + "/" + str(deployment.status.replicas) +")"})
+            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.replicas - deployment.status.unavailable_replicas) + "/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
         elif deployment.status.available_replicas == deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK"})
+                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK", "image":deployment.spec.template.spec.containers[0].image})    
     return deployments_all
 
 def fetchIngressPaths() -> []:
@@ -96,6 +96,15 @@ def generateHTML(deployments, ingresses) -> str:
                 margin-left: auto;
                 margin-right: auto;
             }}
+
+            
+            #imageDiv
+            {{
+                font-size: 70%;
+                border: 0px;
+                padding: 0;
+            }}
+
             table 
             {{
                 grid-row-start: 1;
@@ -138,7 +147,7 @@ def generateHTML(deployments, ingresses) -> str:
     <div class="tableDiv">
                             <table>
                                 <tr>
-                                    <th colspan="3">Quick Monitor - Chart version: """ + chartInfo + """, App version: """ + appVersion + """</th>
+                                    <th colspan="3">Monitored namespace: """ + monitoredNamespace + """</th>
                                 </tr>
                                 <tr>
                                     <th>Deployment</th>
@@ -151,33 +160,34 @@ def generateHTML(deployments, ingresses) -> str:
         if re.search('^OK$', deployment['status']):
             content +=f"""
                         <tr class="ok">
-                            <td>{deployment['name']}</td>
+                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
                             <td>{listPathsOfService(deployment['name'], ingresses)}</td>
                             <td>{deployment['status']}</td>
                         </tr>""" 
         elif re.search('^NOK.*', deployment['status']):
             content +=f"""
                         <tr class="nok">
-                            <td>{deployment['name']}</td>
+                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
                             <td>{listPathsOfService(deployment['name'], ingresses)}</td>
                             <td>{deployment['status']}</td>
                         </tr>"""
         elif re.search('^DISABLED.*', deployment['status']):
             content +=f"""
                         <tr class="disabled">
-                            <td>{deployment['name']}</td>
+                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
                             <td>{listPathsOfService(deployment['name'], ingresses)}</td>
                             <td>{deployment['status']}</td>
                         </tr>"""
 
         
         
-    content +=f'''
+    content +=f"""
                         </table><br>
+                        <div id="imageDiv">Chart version: """ + chartInfo + """, App version: """ + appVersion + """</div><br>
                         Credits: Wojciech Olszewski
                     </div>
                 </body>
-            </html>'''
+            </html>"""
 
     return content
 

@@ -8,7 +8,7 @@ CMD ["/bin/bash","-c","/root/script.sh"]
 USER root
 
 RUN git clone --recursive https://github.com/kubernetes-client/python.git
-RUN cd python && python3 setup.py install
+RUN cd python && python3 setup.py install && cd ../ && rm -rf python
 
 COPY script.py /root/script.py
 COPY script.sh /root/script.sh

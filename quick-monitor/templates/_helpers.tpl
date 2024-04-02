@@ -9,7 +9,7 @@ Expand the name of the chart.
 Setup ingress host
 */}}
 {{- define "quick-monitor.ingressHost" -}}
-{{- default "no_ingress_specified" .Values.ingressHost }}
+{{- default "no-ingress-specified" .Values.ingressHost }}
 {{- end }}
 
 {{/*
