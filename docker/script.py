@@ -28,7 +28,19 @@ def fetchDeploymentsWithStatus() -> []:
             deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.replicas - deployment.status.unavailable_replicas) + "/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
         elif deployment.status.available_replicas == deployment.status.replicas:
                 deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK", "image":deployment.spec.template.spec.containers[0].image})    
-    return deployments_all
+    return sortDeployments(deployments_all)
+
+def sortDeployments(deployments_not_sorted) -> []:
+    deployments_sorted = []
+    for deployment in deployments_not_sorted:
+        if re.search('^NOK.*', deployment['status']):
+            deployments_sorted.append(deployment)
+        elif re.search('^DISABLED.*', deployment['status']):
+            deployments_sorted.append(deployment)
+    for deployment in deployments_not_sorted:
+        if re.search('^OK$', deployment['status']):
+            deployments_sorted.append(deployment)
+    return deployments_sorted
 
 def fetchIngressPaths() -> []:
     api_instance = client.NetworkingV1Api() # client.<api_group>
