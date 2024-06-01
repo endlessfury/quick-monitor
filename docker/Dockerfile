@@ -9,6 +9,7 @@ USER root
 
 RUN git clone --recursive https://github.com/kubernetes-client/python.git
 RUN cd python && python3 setup.py install && cd ../ && rm -rf python
+RUN export APISERVER=https://kubernetes.default.svc && export SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount && export NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) && export TOKEN=$(cat ${SERVICEACCOUNT}/token) && export CACERT=${SERVICEACCOUNT}/ca.crt
 
 COPY script.py /root/script.py
 COPY script.sh /root/script.sh

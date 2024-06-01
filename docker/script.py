@@ -1,13 +1,64 @@
 from kubernetes import client, config
 import os
 import re
+import requests
+import json
+
+class ClusterObject():
+    name: str
+    replicas: int
+    available_replicas: int
+    unavailable_replicas: int
+    ready_replicas: int
+    status: str
+    image: str
+    ingressPaths: list[str]
+    type: str
+    
+    def __init__(self, name, type, replicas, available_replicas, unavailable_replicas, ready_replicas, image):
+        self.name = name
+        self.type = type
+        self.replicas = replicas
+        self.unavailable_replicas = unavailable_replicas if unavailable_replicas is not None else 0
+        self.available_replicas = available_replicas if available_replicas is not None else self.replicas - self.unavailable_replicas
+        self.ready_replicas = ready_replicas
+        self.image = image
+        self.status()
+
+    def status(self):
+        if self.replicas == 0:
+            self.status = "DISABLED"
+        elif self.unavailable_replicas != 0:
+            self.status = f"NOK (%d/%d)" % (self.available_replicas, self.replicas)
+        elif self.available_replicas == self.replicas:
+                self.status = "OK"
 
 monitoredNamespace = os.getenv('monitoredNamespace')
 appVersion = os.getenv('appVersion')
 chartInfo = os.getenv('chartInfo')
+apiserver = os.getenv('APISERVER')
+ca_cert_path = os.getenv('CACERT')
+token = os.getenv('TOKEN')
 
 # https://github.com/kubernetes-client/python/blob/master/kubernetes/README.md
-config.load_incluster_config()
+# config.load_incluster_config()
+
+def fetchObjects() -> []:
+    unsortedObjects = []
+    # curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/deployments | jq -r '.items[] | .metadata.name, .status.replicas, .status.availableReplicas, .status.unavailableReplicas, .status.readyReplicas, .spec.template.spec.containers[0].image'
+
+    deployment_request = requests.get(f"{apiserver}/apis/apps/v1/namespaces/{monitoredNamespace}/deployments", verify=f"{ca_cert_path}", headers={"Authorization" : f"Bearer {token}"})
+    statefulset_request = requests.get(f"{apiserver}/apis/apps/v1/namespaces/{monitoredNamespace}/statefulsets", verify=f"{ca_cert_path}", headers={"Authorization" : f"Bearer {token}"})
+
+    deployment_objects = json.loads(deployment_request.text)
+    statefulset_objects = json.loads(statefulset_request.text)
+    
+    for item in deployment_objects['items']:
+        unsortedObjects.append(ClusterObject(item['metadata'].get("name","empty_name"), "deployment", int(item['status'].get("replicas","0")), int(item['status'].get("availableReplicas","0")), int(item['status'].get("unavailableReplicas","0")), int(item['status'].get("readyReplicas","0")),item['spec']['template']['spec']['containers'][0].get("image","empty_image")))
+    for item in statefulset_objects['items']:
+        unsortedObjects.append(ClusterObject(item['metadata'].get("name","empty_name"), "deployment", int(item['status'].get("replicas","0")), int(item['status'].get("availableReplicas","0")), int(item['status'].get("unavailableReplicas","0")), int(item['status'].get("readyReplicas","0")),item['spec']['template']['spec']['containers'][0].get("image","empty_image")))
+    
+    return unsortedObjects
 
 def fetchDeploymentsWithStatus() -> []:
     api_instance = client.AppsV1Api()
@@ -203,12 +254,12 @@ def generateHTML(deployments, ingresses) -> str:
 
     return content
 
-deployments=fetchDeploymentsWithStatus()
-ingresses=fetchIngressPaths()
-#print(listPathsOfService("asinventoryservices", ingresses))
+# deployments=fetchDeploymentsWithStatus()
+# ingresses=fetchIngressPaths()
+# #print(listPathsOfService("asinventoryservices", ingresses))
 
-output = generateHTML(deployments,ingresses)
+# output = generateHTML(deployments,ingresses)
 
-input = open(f"/root/deployments.html","w", encoding="UTF-8")
-input.write(output)
-input.close()
+# input = open(f"/root/deployments.html","w", encoding="UTF-8")
+# input.write(output)
+# input.close()

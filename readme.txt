@@ -98,7 +98,7 @@ kubectl config use-context quick
 APISERVER=https://kubernetes.default.svc && SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount && NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) && TOKEN=$(cat ${SERVICEACCOUNT}/token) && CACERT=${SERVICEACCOUNT}/ca.crt
 
 curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/api/v1/namespaces/kube-system/pods
-curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/api
+curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/deployments
 
 kubectl auth can-i get pods --as=system:serviceaccount:quick:quick-monitor -n kube-system
 
