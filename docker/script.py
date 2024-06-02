@@ -1,4 +1,3 @@
-from kubernetes import client, config
 import os
 import re
 import requests
@@ -12,40 +11,47 @@ class ClusterObject():
     ready_replicas: int
     status: str
     image: str
-    ingressPaths: list[str]
+    ingress_paths: list[str]
     type: str
     
-    def __init__(self, name, type, replicas, available_replicas, unavailable_replicas, ready_replicas, image):
+    def __init__(self, name, type, replicas, available_replicas, unavailable_replicas, ready_replicas, image, ingress_paths):
         self.name = name
         self.type = type
         self.replicas = replicas
-        self.unavailable_replicas = unavailable_replicas if unavailable_replicas is not None else 0
-        self.available_replicas = available_replicas if available_replicas is not None else self.replicas - self.unavailable_replicas
+        self.unavailable_replicas = unavailable_replicas
+        self.available_replicas = available_replicas 
         self.ready_replicas = ready_replicas
         self.image = image
-        self.status()
+        self.ingress_paths = ingress_paths
+        self.calculate_status()
 
-    def status(self):
+    def calculate_status(self):
         if self.replicas == 0:
             self.status = "DISABLED"
-        elif self.unavailable_replicas != 0:
+        elif self.unavailable_replicas != 0 or self.available_replicas == 0:
             self.status = f"NOK (%d/%d)" % (self.available_replicas, self.replicas)
         elif self.available_replicas == self.replicas:
                 self.status = "OK"
+        else:
+            self.status = f"NOK ?"
 
 monitoredNamespace = os.getenv('monitoredNamespace')
 appVersion = os.getenv('appVersion')
 chartInfo = os.getenv('chartInfo')
-apiserver = os.getenv('APISERVER')
-ca_cert_path = os.getenv('CACERT')
-token = os.getenv('TOKEN')
-
-# https://github.com/kubernetes-client/python/blob/master/kubernetes/README.md
-# config.load_incluster_config()
+# export APISERVER=https://kubernetes.default.svc && export SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount && export NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) && export TOKEN=$(cat ${SERVICEACCOUNT}/token) && export CACERT=${SERVICEACCOUNT}/ca.crt
+apiserver = "https://kubernetes.default.svc"
+ca_cert_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+token = open("/var/run/secrets/kubernetes.io/serviceaccount/token").read()
 
 def fetchObjects() -> []:
     unsortedObjects = []
     # curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/deployments | jq -r '.items[] | .metadata.name, .status.replicas, .status.availableReplicas, .status.unavailableReplicas, .status.readyReplicas, .spec.template.spec.containers[0].image'
+
+    # # test only
+    # f = open('deploymentList.json')
+    # deployment_objects = json.load(f)
+    # i = open('ingressList.json')
+    # ingress_objects = json.load(i)
 
     deployment_request = requests.get(f"{apiserver}/apis/apps/v1/namespaces/{monitoredNamespace}/deployments", verify=f"{ca_cert_path}", headers={"Authorization" : f"Bearer {token}"})
     statefulset_request = requests.get(f"{apiserver}/apis/apps/v1/namespaces/{monitoredNamespace}/statefulsets", verify=f"{ca_cert_path}", headers={"Authorization" : f"Bearer {token}"})
@@ -54,73 +60,59 @@ def fetchObjects() -> []:
     statefulset_objects = json.loads(statefulset_request.text)
     
     for item in deployment_objects['items']:
-        unsortedObjects.append(ClusterObject(item['metadata'].get("name","empty_name"), "deployment", int(item['status'].get("replicas","0")), int(item['status'].get("availableReplicas","0")), int(item['status'].get("unavailableReplicas","0")), int(item['status'].get("readyReplicas","0")),item['spec']['template']['spec']['containers'][0].get("image","empty_image")))
+        name = item['metadata'].get("name","empty_name")
+        replicas = int(item['status'].get("replicas","0"))
+        available_replicas = int(item['status'].get("availableReplicas","0"))
+        unavialable_replicas = int(item['status'].get("unavailableReplicas","0"))
+        ready_replicas = int(item['status'].get("readyReplicas","0"))
+        image = item['spec']['template']['spec']['containers'][0].get("image","empty_image")
+        ingress_paths = getIngressPaths(name)
+        unsortedObjects.append(ClusterObject(name, "deployment", replicas, available_replicas, unavialable_replicas, ready_replicas,image, ingress_paths))
+        
     for item in statefulset_objects['items']:
-        unsortedObjects.append(ClusterObject(item['metadata'].get("name","empty_name"), "deployment", int(item['status'].get("replicas","0")), int(item['status'].get("availableReplicas","0")), int(item['status'].get("unavailableReplicas","0")), int(item['status'].get("readyReplicas","0")),item['spec']['template']['spec']['containers'][0].get("image","empty_image")))
+        name = item['metadata'].get("name","empty_name")
+        replicas = int(item['status'].get("replicas","0"))
+        available_replicas = int(item['status'].get("availableReplicas","0"))
+        unavialable_replicas = int(item['status'].get("unavailableReplicas","0"))
+        ready_replicas = int(item['status'].get("readyReplicas","0"))
+        image = item['spec']['template']['spec']['containers'][0].get("image","empty_image")
+        ingress_paths = getIngressPaths(name)
+        unsortedObjects.append(ClusterObject(name, "deployment", replicas, available_replicas, unavialable_replicas, ready_replicas,image, ingress_paths))
+
+    return sortObjects(unsortedObjects)
+
+def sortObjects(objects_not_sorted) -> []:
+    objects_sorted = []
+    for object in objects_not_sorted:
+        if re.search('^NOK.*', object.status):
+            objects_sorted.append(object)
+        elif re.search('^DISABLED.*', object.status):
+            objects_sorted.insert(0,object)
+    for object in objects_not_sorted:
+        if re.search('^OK$', object.status):
+            objects_sorted.append(object)
+    return objects_sorted
+
+def getIngressPaths(name) -> []:
+    ingresse_request = requests.get(f"{apiserver}/apis/networking.k8s.io/v1/namespaces/{monitoredNamespace}/ingresses", verify=f"{ca_cert_path}", headers={"Authorization" : f"Bearer {token}"})
+    ingress_objects = json.loads(ingresse_request.text)
+
+    ingress_paths = []
+
+    for item in ingress_objects['items']:
+        if item['metadata']['name'] == name:
+            for ingress_path in item['spec']['rules'][0]['http']['paths']:
+                ingress_paths.append(ingress_path['path'])
     
-    return unsortedObjects
+    return ingress_paths
 
-def fetchDeploymentsWithStatus() -> []:
-    api_instance = client.AppsV1Api()
-    deployments = api_instance.list_namespaced_deployment(monitoredNamespace)
-    deployments_all = []
-    for deployment in deployments.items:
-        #print("%s\t%s\t%s" % (deployment.metadata.name, deployment.status.available_replicas, deployment.status.replicas))
-        if deployment.status.replicas == 0:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "DISABLED", "image":deployment.spec.template.spec.containers[0].image})
-        elif deployment.status.unavailable_replicas == 1 and deployment.status.replicas == 1:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (0/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
-        elif deployment.status.available_replicas:
-            if deployment.status.available_replicas < deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.available_replicas) + "/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
-            elif deployment.status.available_replicas == deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK", "image":deployment.spec.template.spec.containers[0].image})
-        elif deployment.status.unavailable_replicas:
-            deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.replicas - deployment.status.unavailable_replicas,"replicas":deployment.status.replicas, "status": "NOK (" + str(deployment.status.replicas - deployment.status.unavailable_replicas) + "/" + str(deployment.status.replicas) +")", "image":deployment.spec.template.spec.containers[0].image})
-        elif deployment.status.available_replicas == deployment.status.replicas:
-                deployments_all.append({"name":deployment.metadata.name,"areplicas":deployment.status.available_replicas,"replicas":deployment.status.replicas, "status": "OK", "image":deployment.spec.template.spec.containers[0].image})    
-    return sortDeployments(deployments_all)
-
-def sortDeployments(deployments_not_sorted) -> []:
-    deployments_sorted = []
-    for deployment in deployments_not_sorted:
-        if re.search('^NOK.*', deployment['status']):
-            deployments_sorted.append(deployment)
-        elif re.search('^DISABLED.*', deployment['status']):
-            deployments_sorted.append(deployment)
-    for deployment in deployments_not_sorted:
-        if re.search('^OK$', deployment['status']):
-            deployments_sorted.append(deployment)
-    return deployments_sorted
-
-def fetchIngressPaths() -> []:
-    api_instance = client.NetworkingV1Api() # client.<api_group>
-    ingresses = api_instance.list_namespaced_ingress(monitoredNamespace)
-    ingresses_all = []
-    for ingress in ingresses.items:
-        #print("Service: %s\tIngressPaths: %s" % (ingress.metadata.name,listPathOfIngresses(ingress.metadata.name)))
-        ingresses_all.append({"service": ingress.metadata.name, "ingressPaths": listPathOfIngresses(ingress.metadata.name)})
-    return ingresses_all
-
-def listPathOfIngresses(name) -> []:
-    api_instance = client.NetworkingV1Api() # client.<api_group>
-    ingress = api_instance.read_namespaced_ingress(name, monitoredNamespace)
-    paths_all = []
-    for path in ingress.spec.rules[0].http.paths:
-        #print("%s" % (path.path))
-        paths_all.append(path.path)
-    return paths_all
-
-def listPathsOfService(name, ingresses) -> str:
+def listIngressPaths(ingress_paths) -> str:
     return_string: str = f""
-    for deployment in ingresses:
-        if name == deployment['service']:
-            for path in deployment['ingressPaths']:
-                #print("%s<br>" % (path))
-                return_string += "%s<br>" % (path)
+    for path in ingress_paths:
+        return_string += "%s<br>" % (path)
     return return_string
 
-def generateHTML(deployments, ingresses) -> str:
+def generateHTML(objects) -> str:
     content: str = f"""
 <!DOCTYPE html>
 <html>
@@ -219,27 +211,27 @@ def generateHTML(deployments, ingresses) -> str:
                                 </tr>
 """
     
-    for deployment in deployments:
-        if re.search('^OK$', deployment['status']):
+    for object in objects:
+        if re.search('^OK$', object.status):
             content +=f"""
                         <tr class="ok">
-                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
-                            <td>{listPathsOfService(deployment['name'], ingresses)}</td>
-                            <td>{deployment['status']}</td>
+                            <td>{object.name}<div id="imageDiv">{object.image.split("/")[-1]}</div></td>
+                            <td>{listIngressPaths(object.ingress_paths)}</td>
+                            <td>{object.status}</td>
                         </tr>""" 
-        elif re.search('^NOK.*', deployment['status']):
+        elif re.search('^NOK.*', object.status):
             content +=f"""
                         <tr class="nok">
-                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
-                            <td>{listPathsOfService(deployment['name'], ingresses)}</td>
-                            <td>{deployment['status']}</td>
+                            <td>{object.name}<div id="imageDiv">{object.image.split("/")[-1]}</div></td>
+                            <td>{listIngressPaths(object.ingress_paths)}</td>
+                            <td>{object.status}</td>
                         </tr>"""
-        elif re.search('^DISABLED.*', deployment['status']):
+        elif re.search('^DISABLED.*', object.status):
             content +=f"""
                         <tr class="disabled">
-                            <td>{deployment['name']}<div id="imageDiv">{deployment['image'].split("/")[-1]}</div></td>
-                            <td>{listPathsOfService(deployment['name'], ingresses)}</td>
-                            <td>{deployment['status']}</td>
+                            <td>{object.name}<div id="imageDiv">{object.image.split("/")[-1]}</div></td>
+                            <td>{listIngressPaths(object.ingress_paths)}</td>
+                            <td>{object.status}</td>
                         </tr>"""
 
         
@@ -254,12 +246,11 @@ def generateHTML(deployments, ingresses) -> str:
 
     return content
 
-# deployments=fetchDeploymentsWithStatus()
-# ingresses=fetchIngressPaths()
-# #print(listPathsOfService("asinventoryservices", ingresses))
 
-# output = generateHTML(deployments,ingresses)
+objects = fetchObjects()
+output = generateHTML(objects)
 
-# input = open(f"/root/deployments.html","w", encoding="UTF-8")
-# input.write(output)
-# input.close()
+input = open(f"/root/deployments.html","w", encoding="UTF-8")
+#input = open(f"deployments.html","w", encoding="UTF-8")
+input.write(output)
+input.close()

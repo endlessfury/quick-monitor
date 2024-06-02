@@ -1,15 +1,16 @@
 FROM ubuntu:noble
 
-RUN apt update && apt install python3 -y && apt install jq -y && apt install curl -y && apt install nginx -y && apt install git -y && apt install pip -y
-
-EXPOSE 80/tcp
 WORKDIR /root
-CMD ["/bin/bash","-c","/root/script.sh"]
 USER root
 
-RUN git clone --recursive https://github.com/kubernetes-client/python.git
-RUN cd python && python3 setup.py install && cd ../ && rm -rf python
-RUN export APISERVER=https://kubernetes.default.svc && export SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount && export NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) && export TOKEN=$(cat ${SERVICEACCOUNT}/token) && export CACERT=${SERVICEACCOUNT}/ca.crt
+EXPOSE 80/tcp
+ENTRYPOINT ["/bin/bash","-c","/root/script.sh"]
+
+RUN apt update &&\ 
+    11 | 0 |apt install python3 -y &&\ 
+    apt install nginx -y &&\ 
+    apt install python3-pip -y &&\ 
+    pip install requests --break-system-package
 
 COPY script.py /root/script.py
 COPY script.sh /root/script.sh
